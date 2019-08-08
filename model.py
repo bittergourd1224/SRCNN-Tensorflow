@@ -8,7 +8,7 @@ from utils import (
 import time
 import os
 import matplotlib.pyplot as plt
-
+import scipy
 import numpy as np
 import tensorflow as tf
 
@@ -111,13 +111,29 @@ class SRCNN(object):
     else:
       print("Testing...")
 
-      result = self.pred.eval({self.images: train_data, self.labels: train_label})
+      result = self.pred.eval({self.images: train_data})
 
       result = merge(result, [nx, ny])
       result = result.squeeze()
       image_path = os.path.join(os.getcwd(), config.sample_dir)
       image_path = os.path.join(image_path, "test_image.png")
       imsave(result, image_path)
+
+      # Print PSNR
+      labelimg = merge(train_label, [nx, ny])
+      labelimg = labelimg.squeeze()
+      print("HR image size: (%d, %d)" % (labelimg.shape[0], labelimg.shape[1]))
+      print("SR image size: (%d, %d)" % (result.shape[0], result.shape[1]))
+
+      bicubic = scipy.ndimage.interpolation.zoom(labelimg, (1. / config.scale), prefilter=False)
+      bicubic = scipy.ndimage.interpolation.zoom(bicubic, (config.scale / 1.), prefilter=False)
+      print("LR image size: (%d, %d)" % (bicubic.shape[0], bicubic.shape[1]))
+
+      psnr_sr=self.cal_psnr(result, labelimg)
+      psnr_bicubic=self.cal_psnr(bicubic, labelimg)
+      print("")
+      print("SR PSNR = %.3f" % psnr_sr)
+      print("Bicubic PSNR = %.3f" % psnr_bicubic)
 
   def model(self):
     conv1 = tf.nn.relu(tf.nn.conv2d(self.images, self.weights['w1'], strides=[1,1,1,1], padding='VALID') + self.biases['b1'])
@@ -149,3 +165,11 @@ class SRCNN(object):
         return True
     else:
         return False
+
+  def cal_psnr(self, img1, img2):
+    mse = np.mean(np.square(img1 - img2))
+    # if mse < 1.0e-10:
+    #   psnr = 100
+    psnr = 10 * np.log10(1.0 ** 2 / mse)
+    return psnr
+
